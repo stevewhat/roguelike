@@ -21,7 +21,7 @@ LIMIT_FPS = 20 #20 frames-per-second maximum
 
 
 FOV_ALGO = 0 #default FOV algorithm
-FOV_LIGHT_WALLS = True
+FOV_LIGHT_WALLS = True #light walls or not
 TORCH_RADIUS = 10
 
 color_dark_wall = libtcod.Color(0, 0, 100)
@@ -37,11 +37,12 @@ class Tile:
     def __init__(self, blocked, block_sight = None):
         self.blocked = blocked
 
+        #all tiles start unexplored
+        self.explored = False
+        
         #by default, if a tile is blocked, it also blocks sight
         if block_sight is None: block_sight = blocked
         self.block_sight = block_sight
-
-        self.explored = False
         
         
 class Rect:
@@ -61,8 +62,6 @@ class Rect:
         #returns true if this rectangle intersects with another one
         return (self.x1 <= other.x2 and self.x2 >= other.x1 and
                 self.y1 <= other.y2 and self.y2 >= other.y1)
-
-                
 
         
 class Object:
@@ -164,7 +163,7 @@ def make_map():
                 #connect it to the previous with a tunnel
 
                 #center coordinates of the previous room
-                (prev_x, prev_y) = rooms[num_rooms-1].center()
+                (prev_x, prev_y) = rooms[num_rooms - 1].center()
                     
                 #draw a coin (random number that is either 0 or 1)
                 if libtcod.random_get_int(0, 0, 1) == 1:
@@ -179,11 +178,6 @@ def make_map():
             #finally, append the new room to the list
             rooms.append(new_room)
             num_rooms += 1
-
-
-                    
-                        
-
 
 
 
@@ -217,9 +211,10 @@ def render_all():
                         libtcod.console_set_char_background(con, x, y, color_light_wall, libtcod.BKGND_SET)
                     else:
                         libtcod.console_set_char_background(con, x, y, color_light_ground, libtcod.BKGND_SET)
-                        
-    if libtcod.map_is_in_fov(fov_map, self.x, self.y):
-        
+                    #since it's visible, explore it
+                    map[x][y].explored = True
+
+                    
         #draw all objects in the list
         for object in objects:
             object.draw()
@@ -227,9 +222,7 @@ def render_all():
         #blit the contents of "con" to the root console
         libtcod.console_blit(con, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0)
         
-    map[x][y].explored = True
-    
-    
+ 
   
 def handle_keys():
     global fov_recompute
@@ -263,9 +256,8 @@ def handle_keys():
                               
                               
 
-#################################                       
-# Initialization & Main Loop    # 
-#################################
+                       
+# Initialization & Main Loop    
 
 libtcod.console_set_custom_font('arial10x10.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD)
 libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'python/libtcod tutorial', False)

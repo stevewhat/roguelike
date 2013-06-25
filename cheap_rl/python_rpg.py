@@ -122,15 +122,69 @@ class Object:
         dy = other.y - self.y
         return math.sqrt(dx ** 2 + dy ** 2)
         
+    def send_to_back(self):
+        #make this object be drawn first, so all others appear above it,
+        #if they're in the same tile
+        global objects
+        objects.remove(self)
+        objects.insert(0, self)
+        
         
 class Fighter:
     #combat-related properties and methods (monster, player, NPC)
-    def __init__(self, hp, defense, power):
+    def __init__(self, hp, defense, power, death_function=None):
         self.max_hp = hp
         self.hp = hp
         self.defense = defense
         self.power = power
+        self.death_function = death_function
         
+    def take_damage(self, damage):
+        #apply damage if possible
+        if damage > 0:
+            self.hp -= damage
+            #check for death. if there's a death function, call it
+            if self.hp <= 0:
+                function = self.death_function
+                if function is not None:
+                    function(self.owner)
+                
+    def attack(self, target):
+        #a simple formula for attack damage
+        damage = self.power - target.fighter.defense
+        
+        if damage > 0:
+            #make the target take some damage
+            print self.owner.name.capitalize() + ' attacks '+ target.name + ' for ' + str(damage) + ' hit points.'
+            target.fighter.take_damage(damage)
+        else:
+            print self.owner.name.capitalize() + ' attacks ' + target.name + ' but it has no effect!'   
+        
+        
+def player_death(player):
+    #the game ended!
+    global game_state
+    print 'You died!'
+    game_state = 'dead'
+    
+    #for added effect, transform the player into a corpse!
+    player.char = '%'
+    player.color = libtcod.dark_red
+    
+def monster_death(monster):
+    #transform it into a nasty corpse! it doesn't block,
+    #can't be attacked, and doesn't move
+    print monster.name.capitalize() + ' is dead!'
+    
+    monster.char = '%'
+    monster.color = libtcod.dark_red
+    monster.blocks = False
+    monster.fighter = None
+    monster.ai = None
+    monster.name = ' remains of ' + monster.name
+
+    monster.send_to_back
+            
        
 class BasicMonster:
   
@@ -146,7 +200,7 @@ class BasicMonster:
                 
             #close enough, attack! (if the player is still alive)
             elif player.fighter.hp > 0:
-                print 'The attack of the ' + monster.name + ' bounces off your shiny metal armor!'
+                monster.fighter.attack(player)
         
                     
 def is_blocked(x, y):
@@ -289,10 +343,17 @@ def render_all():
                     
         #draw all objects in the list
         for object in objects:
-            object.draw()
+            if object != player:
+                object.draw()
+            player.draw()
 
         #blit the contents of "con" to the root console
         libtcod.console_blit(con, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0)
+        
+        #show the player's stats
+        libtcod.console_set_default_foreground(con, libtcod.white)
+        libtcod.console_print_ex(0, 1, SCREEN_HEIGHT - 2, libtcod.BKGND_NONE, libtcod.LEFT,
+            'HP: ' + str(player.fighter.hp) + '/' + str(player.fighter.max_hp))
  
   
 def handle_keys():
@@ -346,14 +407,14 @@ def place_objects(room):
         
             if libtcod.random_get_int(0, 0, 100) < 80: #80% chance of getting an orc
                 #create an orc
-                fighter_component = Fighter(hp=10, defense=0, power=3)
+                fighter_component = Fighter(hp=10, defense=0, power=3, death_function=monster_death)
                 ai_component = BasicMonster()
                 
                 monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green,
                     blocks=True, fighter=fighter_component, ai=ai_component)
             else:
                 #create a troll
-                fighter_component = Fighter(hp=16, defense=1, power=4)
+                fighter_component = Fighter(hp=16, defense=1, power=4, death_function=monster_death)
                 ai_component = BasicMonster()
                 
                 monster = Object(x, y, 'T', 'troll', libtcod.darker_green,
@@ -373,19 +434,20 @@ def player_move_or_attack(dx, dy):
     #try to find an attackable object there
     target = None
     for object in  objects:
-        if object.x == x and object.y == y:
+        if object.fighter and object.x == x and object.y == y:
             target = object
             break
              
     #attack if target found, move otherwise
     if target is not None:
-        print 'The ' + target.name + ' laughs at your puny efforts to attack him!'
+        player.fighter.attack(target)
     else:
         player.move(dx, dy)
         fov_recompute = True
         
-        
-        
+
+    
+    
 # Initialization & Main Loop    
 
 libtcod.console_set_custom_font('arial10x10.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD)
@@ -394,9 +456,22 @@ libtcod.sys_set_fps(LIMIT_FPS)
 
 con = libtcod.console_new(SCREEN_WIDTH, SCREEN_HEIGHT)
 
+panel = libtcod.console_new(SCREEN_WIDTH, PANEL_HEIGHT)
 
+def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color):
+    #render a bar (HP, experience, etc.). first calculate the width of the bar
+    bar_width = int(float(value) / maximum * total_width)
+    
+    #render the background first
+    libtcod.console_set_default_background(panel, back_color)
+    libtcod.console_rect(panel, x, y, total_width, 1, False, libtcod.BKGND_SCREEN)
+    
+    #now render the bar on top
+    libtcod.console_set_default_background(panel, bar_color)
+    if bar_width > 0:
+        libtcod.console_rect(panel, x, y, bar_width, 1, False, libtcod.BKGND_SCREEN)
 #create object representing the player
-fighter_component = Fighter(hp=30, defense=2, power=5)
+fighter_component = Fighter(hp=30, defense=2, power=5, death_function=player_death)
 player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 
 #the list of objects, starting with the player
